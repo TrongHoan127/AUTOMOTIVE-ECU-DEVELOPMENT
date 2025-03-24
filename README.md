@@ -1141,4 +1141,291 @@ Khi giá trị CNT đạt đến giá trị **ARR (Auto-Reload Register)** đã 
 		return data;
 	}
 - Hàm nhận 8 bit dữ liệu: Sử dụng các hàm trên theo các câu trúc khác nhau để giao tiếp với slave
+</details>
+<details><summary>LESSON 7: UART</summary>
+    <p>
+        
+## LESSON 7: UART SOFTWARE & HARDWARE
+### 1. UART SOFTWARE
+#### 1.1. Xác định chân và cấu hình GPIO
+![image](https://github.com/user-attachments/assets/8779ba7d-5d3f-49b9-8c46-4f1b5651ef02)
 
+- Sử dụng các GPIO để mô phỏng quá trình truyền nhận của UART
+- Có hai bước để thực hiện:
+	- Xác định các chân UART
+	- Cấu hình GPIO
+   	```c
+	#define TX_Pin GPIO_Pin_0
+	#define RX_Pin GPIO_Pin_1
+	#define UART_GPIO GPIOA
+	#define time_duration 104
+
+	void RCC_Config(){
+		RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+		RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+	}
+- Chúng ta sẽ sử dụng A0 làm TX và A1 làm RX và cấp xung cho chúng.
+	```c
+	void delay_us(uint16_t timedelay){
+	    TIM_SetCounter(TIM2, 0);
+	    while(TIM_GetCounter(TIM2)<timedelay){}
+	}
+	
+	void delay_s(uint32_t timedelay){
+	    TIM_SetCounter(TIM2, 0);
+				for(int i = 0; i < timedelay*1000000; i++){
+					delay_us(1);
+				}
+	}
+- Tạo hai hàm delay sử dụng Tỉmer2 đã được đề cập từ bài trước.
+
+	void clock(){
+		delay_us(time_duration);
+	}
+- Một hàm tạo delay, là khoảng thời gian giữa hai lần truyền dữ liệu để hai bên đồng bộ.
+- time_duration là khoảng thời gian delay khi chọn Baudrate = 9600.
+![image](https://github.com/user-attachments/assets/0c46b3e6-e939-41c9-8de0-e7d5a995878f)
+
+- BaudRate = 9600
+- Tức truyền được 9600bits/s = 9600bits/1000ms
+- Nghĩa là 1 bit truyền đi mất khoảng 0.10467ms
+- Vì thế time_duration = 104 để xấp xỉ.
+  	```C
+	void GPIO_Config(){
+		GPIO_InitTypeDef GPIOInitStruct;
+		GPIOInitStruct.GPIO_Pin = RX_Pin;
+		GPIOInitStruct.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+		GPIO_Init(GPIOA, &GPIOInitStruct);
+		//
+		GPIOInitStruct.GPIO_Pin = TX_Pin;
+		GPIOInitStruct.GPIO_Speed = GPIO_Speed_50MHz;
+		GPIOInitStruct.GPIO_Mode = GPIO_Mode_Out_PP;
+		GPIO_Init(GPIOA, &GPIOInitStruct);
+	}
+- Ta sẽ cấu hình RX kiểu Input Floating để làm ngõ vào và TX Output Push-Pull để tạo ngõ ra.
+	```c
+	void UART_Config(){
+		GPIO_SetBits(UART_GPIO, TX_Pin);
+		delay_us(1);
+	}
+- Và khi chưa truyền dữ liệu thì cả hai chân được nối mức cao.
+
+#### 1.2. Hàm mô phỏng gửi dữ liệu kí tự
+
+	```c
+	void UARTSoftware_Transmit(char c) {
+	    // Start bit
+	    GPIO_ResetBits(GPIOA, TX_Pin); // Tao dieu kien bat dau
+	    clock();
+	
+	    // Truyen các bit du lieu (LSB truoc)
+	    for (int i = 0; i < 8; i++) {
+	        if (c & (1 << i)) {
+	            GPIO_SetBits(GPIOA, TX_Pin);
+	        } else {
+	            GPIO_ResetBits(GPIOA, TX_Pin);
+	        }
+	        clock();
+	    }
+	
+	    // Stop bit
+	    GPIO_SetBits(GPIOA, TX_Pin);
+	    clock();
+	}
+- Trước khi gửi, phải kéo chân TX xuống mức và delay một chu kỳ để bắt đầu tín hiệu Start
+- Sau đó sẽ truyền lần lượt 8 bits dữ liệu bằng cách dịch và set chân TX theo giá trị vừa tìm và delay trong một khoảng chu kỳ
+- Sau khi truyền xong 8 bits dữ liệu sẽ truyền bits Stop tức kéo chân TX lên mức 1 để kết thúc truyền nhận (với trường hợp không dùng Parity).
+#### 1.3. Hàm mô phỏng nhận ký tự
+
+	```c
+	char UARTSoftware_Receive() {
+	    char c = 0;
+			// Start bit
+			while (GPIO_ReadInputDataBit(GPIOA, RX_Pin) == 1);
+	
+			delay_us(time_duration + time_duration / 2);
+	
+			for (int i = 0; i < 8; i++) {
+					if (GPIO_ReadInputDataBit(GPIOA, RX_Pin)) {
+							c |= (1 << i);
+					}
+					clock(); 
+			}
+	
+			// Đợi Stop bit
+			delay_us(time_duration / 2);
+			
+			return c;
+	}
+- Tại bên nhận sẽ chờ cho đến khi nhận được tín hiệu Start
+- Sau đó sẽ delay 1.5 chu kỳ để khi đọc dữ liệu, sẽ đọc tại vị trí giữa của một bit, nơi tín hiệu đã ổn định
+- Lần lượt nhận 8 bits dữ liệu tại chân RX và dịch vào c
+- Delay nửa chu kỳ cuối để đợi Stop bit và trả về ký tự c là dữ liệu nhận được
+  	```c
+	char data[9] = {'V', 'A', 'N', 'T', 'U', 'H', 'A', 'L', 'A'};
+	int main(){
+		RCC_Config();
+		GPIO_Config();
+		TIMER_config();
+		UART_Config();
+		for (int i = 0; i<9; i++){
+				UARTSoftware_Transmit(data[i]);
+			delay_s(1);
+		}
+			UARTSoftware_Transmit('\n');
+			
+		while(1){
+			UARTSoftware_Transmit(UARTSoftware_Receive());
+		}	
+	}
+- Hàm test sẽ lần lượt gửi 9 ký tự qua UART và sau đó sẽ chờ để nhận dữ liệu nhận về của UART.
+
+### UART Hardware
+Sử dụng UART được tích hợp trên phần cứng của vi điều khiển.
+
+Các bước thực hiện
+
+Xác định các chân GPIO của UART
+Cấu hình GPIO
+Cấu hình UART
+Ở bài này chúng ta sẽ sử dụng USART1 có hai chân PA9 - TX và PA10 - RX
+
+Để sử dụng UART, ta phải thêm thư viện  "stm32f10x_usart.h"
+
+Cấu hình GPIO
+
+void RCC_Config(void){
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1 | RCC_APB2Periph_GPIOA, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+}
+
+void GPIO_Config(void){
+	GPIO_InitTypeDef GPIOInitStruct;
+	
+	GPIOInitStruct.GPIO_Pin = GPIO_Pin_10; //Chan RX
+	GPIOInitStruct.GPIO_Mode = GPIO_Mode_IN_FLOATING;// Neu 2 chan de AF thi bi ngan mach
+	GPIO_Init(GPIOA, &GPIOInitStruct);
+	
+	GPIOInitStruct.GPIO_Pin = GPIO_Pin_9; //Chan TX
+	GPIOInitStruct.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIOInitStruct.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_Init(GPIOA, &GPIOInitStruct);
+}
+Đầu tiên phải cấp xung GPIOA để sử dụng các chân và cấp thêm cho bộ USART1.
+
+Chân RX được cấu hình GPIO_Mode_IN_FLOATING và ngõ ra TX được cấu hình GPIO_Mode_AF_PP. Không cấu hình RX là AF_PP vì sẽ bị ngắn mạch hai chân RX và TX.
+
+Cấu hình UART
+
+void UART_Config(void){
+	USART_InitTypeDef UARTInitStruct;
+	UARTInitStruct.USART_Mode = USART_Mode_Tx | USART_Mode_Rx; //Cau hinh che do: ca truyen va nhan (song cong)
+	UARTInitStruct.USART_BaudRate = 115200; //Cau hinh toc do bit
+	UARTInitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None; //Cau hinh kiem soat luong truyen du lieu tranh viec tran bo dem
+	UARTInitStruct.USART_WordLength = USART_WordLength_8b; //Truyen du lieu 8 hoac 9 bit
+	UARTInitStruct.USART_Parity = USART_Parity_No;
+	UARTInitStruct.USART_StopBits = USART_StopBits_1;
+	
+	USART_Init(USART1, &UARTInitStruct);
+	
+	USART_Cmd(USART1, ENABLE);
+	
+}
+USART_Mode: Cấu hình Mode của vi điều khiển là nhận hay gửi hoặc cả hai khi sử dụng phép OR.
+
+USART_BaudRate: Cấu hình BaudRate để đồng bộ truyền nhận dữ liệu giữa hai vi điều khiển. Phổ biến nhất là 9600 và 115200.
+
+USART_HardwareFlowControl: Dùng để bật chế độ kiểm soát luồng truyền để tránh việc tràn bộ đệm. Có các giá trị sauL
+
+USART_HardwareFlowControl_None       
+USART_HardwareFlowControl_RTS    // Request to Send   
+USART_HardwareFlowControl_CTS    // Clear to Send
+USART_HardwareFlowControl_RTS_CTS
+RTS (Request To Send - Yêu cầu gửi)
+
+Được điều khiển bởi thiết bị gửi dữ liệu.
+Khi thiết bị gửi dữ liệu sẵn sàng để truyền, nó kéo RTS xuống mức thấp (Active Low).
+Khi bộ đệm của thiết bị nhận đầy, nó kéo RTS lên mức cao, báo cho thiết bị gửi tạm dừng truyền dữ liệu.
+CTS (Clear To Send - Cho phép gửi)
+
+Được điều khiển bởi thiết bị nhận dữ liệu.
+Khi bộ đệm của thiết bị nhận còn trống, nó kéo CTS xuống mức thấp, cho phép thiết bị gửi tiếp tục truyền dữ liệu.
+Nếu bộ đệm đầy, thiết bị nhận kéo CTS lên mức cao, yêu cầu dừng gửi dữ liệu. Thiết bị A muốn gửi dữ liệu:
+Kiểm tra CTS từ thiết bị B:
+Nếu CTS = LOW, thiết bị A có thể gửi dữ liệu.
+Nếu CTS = HIGH, thiết bị A tạm dừng gửi để tránh tràn bộ đệm. Thiết bị B nhận dữ liệu:
+Khi bộ đệm gần đầy, RTS = HIGH, báo hiệu thiết bị A tạm dừng truyền dữ liệu.
+Khi bộ đệm có không gian trống, RTS = LOW, cho phép tiếp tục truyền.
+USART_WordLength: Khai báo dữ liệu truyền là 8 bits hoặc 9 bits
+
+USART_StopBits: Cấu hình số lượng Stopbit
+
+USART_StopBits_1
+USART_StopBits_0_5 
+USART_StopBits_2    
+USART_StopBits_1_5    
+USART_Parity: Cấu hình sử dụng Parity, có hai loại là chẵn hoặc lẽ, có thể không cần sử dụng
+
+#define USART_Parity_No
+#define USART_Parity_Even
+#define USART_Parity_Odd 
+Một số hàm được thiết lập sẵn trong UART
+
+Hàm USART_SendData(USART_TypeDef* USARTx, uint16_t Data) truyền data từ UARTx. Data này đã được thêm bit chẵn/lẻ tùy cấu hình.
+Hàm USART_ReceiveData(USART_TypeDef* USARTx) nhận data từ UARTx.
+Hàm USART_GetFlagStatus(USART_TypeDef* USARTx, uint16_t USART_FLAG) trả về trạng thái cờ USART_FLAG tương ứng:
+USART_FLAG_TXE: Cờ truyền, set lên 1 nếu quá trình truyền hoàn tất.
+USART_FLAG_RXNE: Cờ nhận, set lên 1 nếu quá trình nhận hoàn tất.
+USART_FLAG_IDLE: Cờ báo đường truyền đang ở chế độ Idle.
+USART_FLAG_PE: Cờ báo lỗi Parity.
+Hàm gửi một ký tự
+
+void UART_SendChar(USART_TypeDef *USARTx, char data){
+	
+	while(USART_GetFlagStatus(USARTx, USART_FLAG_TXE)==RESET); // Cho khi thanh ghi DR trong de chen du lieu moi de gui
+	
+	USART_SendData(USARTx, data);
+	
+	while(USART_GetFlagStatus(USARTx, USART_FLAG_TC)==RESET);//Cho den khi truyen thanh cong
+	
+	
+}
+Đợi đến khi thanh ghi DR trống đến thêm dữ liệu mới và gửi
+
+Gửi dữ liệu bằng hàm USART_SendData(USARTx, data);
+
+Sau đó chờ đến khi truyền thành công
+
+Hàm nhận một ký tự
+
+char UART_ReceiveChar(USART_TypeDef *USARTx){
+	char tmp = 0x00;
+	
+	while(USART_GetFlagStatus(USARTx, USART_FLAG_RXNE)==RESET);
+	
+	tmp = USART_ReceiveData(USARTx);
+	
+	return tmp;
+}
+Chờ đến khi nhận hoạt tất
+Nhận Data từ UARTx gán vào tmp.
+Test
+
+uint8_t DataTrans[] = {'V','A','N','T','U'};//Du lieu duoc truyen di
+int main() {
+	RCC_Config();
+	GPIO_Config();
+	UART_Config();
+	TIMER_config();	
+	for(int i = 0; i<5; ++i){
+			delay_ms(1998);
+			UART_SendChar(USART1, DataTrans[i]);
+			delay_ms(2);
+		}
+	UART_SendChar(USART1, '\n');
+
+	while(1){
+		UART_SendChar(USART1,UART_ReceiveChar(USART1));
+	}
+}
+Sử dụng main() để test bằng cách gửi 5 bytes dữ liệu qua USART1 và sau đó chờ để nhận dữ liệu về.
