@@ -1542,4 +1542,96 @@ void UART_Config(void){
 	- Kiểm tra ngắt đến từ line nào, có đúng là line cần thực thi hay không?
 	- Thực hiện các lệnh, các hàm.
 	- Xóa cờ ngắt ở line.
- - 
+ - cú pháp hàm:
+   	```c
+    	void EXTI0_IRQHandler()
+	{	if(EXTI_GetITStatus(EXTI_Line0) != RESET)
+	{
+
+	}
+	EXTI_ClearITPendingBit(EXTI_Line0);
+	}
+- ví dụ:
+  	```c
+   	//Ham xu ly khi co ngat line0
+	void EXTI0_IRQHandler(){	
+	if(EXTI_GetITStatus(EXTI_Line0) != RESET){ //Kiem tra co ngat cua Line0
+		for(int i = 0; i<5; i++){
+			GPIO_SetBits(GPIOC, GPIO_Pin_13);
+			delay_ms(200);
+			GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+			delay_ms(200);
+		}
+	}
+	EXTI_ClearITPendingBit(EXTI_Line0); //Xoa co ngat cua line0
+	}
+	int main(){
+		RCC_Config();
+		GPIO_Config();
+		EXTI_Config();
+		NVIC_Config();
+		TIMER_config();
+		while(1){
+			GPIO_SetBits(GPIOC, GPIO_Pin_13);
+			delay_ms(3000);
+			GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+			delay_ms(3000);
+	  }   
+	}
+### 2. Ngắt Timer
+- Tương tự với ngắt ngoài thì ngắt timer cũng cần cấp clock cho AFIO
+#### 2.1. Cấu hình ngắt timer
+	```c
+ 	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStruct;
+	TIM_TimeBaseInitStruct.TIM_ClockDivision = TIM_CKD_DIV2; // f = 36Mhz 
+	TIM_TimeBaseInitStruct.TIM_Prescaler = 36000-1; //1ms đếm lên một lần
+	TIM_TimeBaseInitStruct.TIM_Period =5000-1; //Chu kỳ 5000 tức đếm lên 5000 lần thì reset tức 5s.
+	TIM_TimeBaseInitStruct.TIM_CounterMode = TIM_CounterMode_Up;
+	TIM_TimeBaseInit(TIM2, &TIM_TimeBaseInitStruct);
+	TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE); //TIM_IT_Update: Khi Timer cập nhật lại bộ đếm về 0 thì tạo ngắt.
+	TIM_Cmd(TIM2, ENABLE);
+ #### 2.2. Cấu hình NVIC
+ 	```c
+  	void NVIC_Config(void){
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);//Cau hinh so bit cua Preemption Priority vaf Sub Prioriry
+	
+	NVIC_InitTypeDef NVICInitStruct;
+
+	NVICInitStruct.NVIC_IRQChannel = TIM2_IRQn; //Cau hinh channel ngat la Timer2
+	NVICInitStruct.NVIC_IRQChannelPreemptionPriority = 0; //mamg gia tri tu 0-3 vi cai dat 2bit cho Preemption Priority
+	NVICInitStruct.NVIC_IRQChannelSubPriority = 0;	//mamg gia tri tu 0-3 vi cai dat 2bit cho Sub Priority
+	NVICInitStruct.NVIC_IRQChannelCmd = ENABLE;
+	
+	NVIC_Init(&NVICInitStruct);
+	}
+ - ví dụ nhấp led:
+	```c
+ 	void delay_ms(uint16_t timedelay){
+	count = 0;
+	while(count < timedelay);
+}
+
+void TIM2_IRQHandler()
+{
+	if(TIM_GetITStatus(TIM2, TIM_IT_Update)){ //Kiem tra co ngat TIM_IT_UPDATe
+		count++;
+	}
+	// Clears the TIM2 interrupt pending bit
+	TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+}
+
+
+int main() {
+	RCC_Config();
+	TIM_Config();
+	GPIO_Config();
+	NVIC_Config();
+	while(1){
+		GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+		delay_ms(2000);
+		GPIO_SetBits(GPIOC, GPIO_Pin_13);
+		delay_ms(2000);
+	}
+	}
+ ### 3. Ngắt truyền thông
+ 
