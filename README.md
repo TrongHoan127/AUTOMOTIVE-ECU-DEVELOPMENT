@@ -1832,6 +1832,7 @@ DMA (Direct Memory Access) là một cơ chế trong hệ thống nhúng và má
 
 Trong các hệ thống không sử dụng DMA, khi thiết bị ngoại vi cần truyền hoặc nhận dữ liệu (ví dụ, cảm biến gửi dữ liệu qua SPI hoặc UART), CPU phải thực hiện từng thao tác đọc hoặc ghi dữ liệu từng byte từ bộ nhớ sang thanh ghi của thiết bị ngoại vi hoặc ngược lại. Quá trình này tốn nhiều thời gian CPU và làm giảm hiệu suất xử lý chung của hệ thống, đặc biệt khi khối lượng dữ liệu lớn hoặc tốc độ truyền nhanh.
 ![image](https://github.com/user-attachments/assets/e4925039-6248-4875-a8c0-a84880cc6fe3)
+
 DMA giải quyết vấn đề này bằng cách cho phép CPU chỉ thiết lập cấu hình ban đầu thông qua Handshake cho bộ điều khiển DMA (DMA controller), bao gồm địa chỉ bộ nhớ nguồn, địa chỉ bộ nhớ đích, kích thước dữ liệu cần truyền, và các chế độ hoạt động. Sau đó, bộ điều khiển DMA sẽ tự động quản lý việc truyền dữ liệu trực tiếp giữa bộ nhớ và thiết bị ngoại vi mà không cần CPU phải can thiệp vào từng bước.
 
 Khi hoàn tất quá trình truyền, DMA gửi tín hiệu ngắt (interrupt) để thông báo cho CPU, từ đó CPU có thể xử lý các tác vụ tiếp theo. Nhờ vậy, CPU được giải phóng để thực hiện các nhiệm vụ khác, nâng cao hiệu suất tổng thể và giảm độ trễ của hệ thống.
@@ -1878,7 +1879,7 @@ STM32F103C8T6 có hai bộ DMA. DMA1 gồm 7 kênh, DMA2 gồm 5 kênh.
 Nhờ các cờ báo này, phần mềm có thể linh hoạt xử lý các sự kiện truyền dữ liệu, theo dõi tiến trình, và xử lý lỗi nhanh chóng, nâng cao độ tin cậy của hệ thống.
 ### 3. Cấu hình DMA trên STM32
 #### 3.1. Cấp xung clock thông qua bus AHB
-	`c
+	```c
  	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA| RCC_APB2Periph_SPI1| RCC_APB2Periph_AFIO, ENABLE);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
