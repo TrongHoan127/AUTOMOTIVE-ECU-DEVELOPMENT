@@ -1822,3 +1822,65 @@ Bộ lọc Kalman, được Rudolf (Rudy) E. Kálmán công bố năm 1960, là 
 ![image](https://github.com/user-attachments/assets/861bf878-7021-402d-99b9-f8b2eab37023)
 
 Gọi hàm SimpleKalmanFilter(float mea_e, float est_e, float q)); Để khởi các giá trị sai số ước tính, sai số đo lường và sai số quá trình ban đầu. - mea_e: Sai số đo lường của phần cứng - est_e: Sai số dự đoán. - q: Sai số nhiễu quá trình từ tính hiệu đến bộ chuyển đổi ADC.
+</details>
+<details><summary>LESSON 10: DMA</summary>
+    <p>
+        
+## LESSON 10: DMA
+### 1. Khái niệm
+DMA (Direct Memory Access) là một cơ chế trong hệ thống nhúng và máy tính cho phép các thiết bị ngoại vi (ví dụ: ADC, SPI, UART, v.v.) hoặc bộ nhớ trong hệ thống (như RAM, Flash) truyền hoặc nhận dữ liệu trực tiếp với bộ nhớ mà không cần sự can thiệp trực tiếp của CPU.
+
+Trong các hệ thống không sử dụng DMA, khi thiết bị ngoại vi cần truyền hoặc nhận dữ liệu (ví dụ, cảm biến gửi dữ liệu qua SPI hoặc UART), CPU phải thực hiện từng thao tác đọc hoặc ghi dữ liệu từng byte từ bộ nhớ sang thanh ghi của thiết bị ngoại vi hoặc ngược lại. Quá trình này tốn nhiều thời gian CPU và làm giảm hiệu suất xử lý chung của hệ thống, đặc biệt khi khối lượng dữ liệu lớn hoặc tốc độ truyền nhanh.
+![image](https://github.com/user-attachments/assets/e4925039-6248-4875-a8c0-a84880cc6fe3)
+DMA giải quyết vấn đề này bằng cách cho phép CPU chỉ thiết lập cấu hình ban đầu thông qua Handshake cho bộ điều khiển DMA (DMA controller), bao gồm địa chỉ bộ nhớ nguồn, địa chỉ bộ nhớ đích, kích thước dữ liệu cần truyền, và các chế độ hoạt động. Sau đó, bộ điều khiển DMA sẽ tự động quản lý việc truyền dữ liệu trực tiếp giữa bộ nhớ và thiết bị ngoại vi mà không cần CPU phải can thiệp vào từng bước.
+
+Khi hoàn tất quá trình truyền, DMA gửi tín hiệu ngắt (interrupt) để thông báo cho CPU, từ đó CPU có thể xử lý các tác vụ tiếp theo. Nhờ vậy, CPU được giải phóng để thực hiện các nhiệm vụ khác, nâng cao hiệu suất tổng thể và giảm độ trễ của hệ thống.
+![image](https://github.com/user-attachments/assets/a60a6f7f-53e0-4cb0-9065-aab4f6ccb635)
+- CPU (1) cấu hình và kích hoạt DMA (4) hoạt động.
+- Ngoại vi (5) sẽ sử dụng DMA Request (6) để yêu cầu DMA (4) gửi/nhận dữ liệu ngoại vi.
+- DMA (4) tiến hành thực hiện yêu cầu từ DMA Request (6).
+- Lấy dữ liệu từ SRAM (2) thông qua Bus Matrix (3) <-> Đi qua các đường bus ngoại vi <-> Truy cập các thanh vi của ngoại vi (5).
+- Khi kết thúc, DMA (4) kích hoạt ngắt báo cho CPU (1) biết là quá trình hoan tất.
+### 2. DMA trong STM32
+Trên vi điều khiển STM32, DMA hoạt động với các thành phần chính sau:
+- DMA Stream: Là các luồng DMA, mỗi luồng có thể truyền một loại dữ liệu cụ thể (ví dụ: truyền từ bộ nhớ đến một thiết bị ngoại vi hoặc ngược lại).
+- DMA Channel: Một kênh DMA cụ thể sẽ liên kết với một thiết bị ngoại vi (ví dụ: SPI, USART).
+- DMA Controller (DMA1, DMA2): Điều khiển tất cả các luồng DMA.
+- DMA Interrupt: DMA có thể tạo interrupt (ngắt) khi hoàn thành một công việc, giúp CPU biết khi nào dữ liệu đã được truyền xong.
+
+Ví dụ: STM32F4 có 2 DMA controllers (DMA1 và DMA2), mỗi controller có 8 streams, và mỗi stream hỗ trợ nhiều channel. Việc kết hợp stream và channel giúp chọn đúng thiết bị ngoại vi và kiểu truyền.
+
+STM32F103C8T6 có hai bộ DMA. DMA1 gồm 7 kênh, DMA2 gồm 5 kênh.
+![image](https://github.com/user-attachments/assets/e458feea-5df8-45af-a7bb-efa96f9122bf)
+
+- Hai chế độ hoạt động chính:
+	- Normal mode (Chế độ bình thường): Truyền dữ liệu một lần theo số lượng byte đã cấu hình, sau đó dừng.
+	- Circular mode (Chế độ vòng tròn): Truyền dữ liệu liên tục, tự động quay lại đầu khi kết thúc, phù hợp cho các ứng dụng thu thập dữ liệu liên tục như ADC.
+-  Cấu hình kênh linh hoạt:
+	- Mỗi kênh DMA có thể được cấu hình riêng biệt về địa chỉ nguồn, địa chỉ đích, kích thước dữ liệu, hướng truyền, và chế độ hoạt động. Điều này cho phép mỗi kênh phục vụ cho nhu cầu truyền dữ liệu khác nhau trong hệ thống.
+- Chia sẻ kênh cho nhiều ngoại vi:
+	- Một kênh DMA có thể được ánh xạ để phục vụ cho nhiều ngoại vi khác nhau. Tuy nhiên, mỗi kênh chỉ hoạt động cho một ngoại vi tại một thời điểm, không thể đồng thời phục vụ nhiều ngoại vi.
+- Ưu tiên kênh (Priority Levels):
+	- Các kênh DMA có mức ưu tiên khác nhau (thấp đến rất cao). Khi nhiều kênh cùng yêu cầu truy cập bus DMA, kênh có ưu tiên cao hơn sẽ được phục vụ trước. Điều này giúp đảm bảo các tác vụ quan trọng hơn được xử lý kịp thời.
+- Hệ thống ngắt (Interrupt) với nhiều cờ báo:
+	- DMA trên STM32 hỗ trợ 5 loại cờ ngắt chính để theo dõi và xử lý quá trình truyền dữ liệu:
+
+	- DMA Half Transfer (HT): Báo khi quá trình truyền đã hoàn thành một nửa lượng dữ liệu.
+
+	- DMA Transfer Complete (TC): Báo khi truyền dữ liệu hoàn tất.
+
+	- DMA Transfer Error (TE): Báo lỗi trong quá trình truyền.
+
+	- DMA FIFO Error (FE): Báo lỗi liên quan đến FIFO (nếu DMA sử dụng FIFO).
+
+	- Direct Mode Error (DME): Báo lỗi khi sử dụng chế độ truyền trực tiếp không qua FIFO.
+
+Nhờ các cờ báo này, phần mềm có thể linh hoạt xử lý các sự kiện truyền dữ liệu, theo dõi tiến trình, và xử lý lỗi nhanh chóng, nâng cao độ tin cậy của hệ thống.
+### 3. Cấu hình DMA trên STM32
+#### 3.1. Cấp xung clock thông qua bus AHB
+	`c
+ 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA| RCC_APB2Periph_SPI1| RCC_APB2Periph_AFIO, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+ #### 3.2. Cấu hình DMA
+ 
