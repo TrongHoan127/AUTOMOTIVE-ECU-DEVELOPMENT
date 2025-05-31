@@ -1884,4 +1884,68 @@ Nhờ các cờ báo này, phần mềm có thể linh hoạt xử lý các sự
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
  #### 3.2. Cấu hình DMA
+- Các tham số cho bộ DMA được cấu hình trong struct DMA_InitTypeDef. Gồm:
+	- `DMA_PeripheralBaseAddr`: Cấu hình địa chỉ của ngoại vi cho DMA. Đây là địa chỉ mà DMA sẽ lấy data hoặc truyền data tới cho ngoại vi. ( ô địa chỉ đầu tiên)
+	- `DMA MemoryBaseAddr`: Cấu hình địa chỉ vùng nhớ cần ghi/ đọc data .
+	- `DMA_DIR`: Cấu hình hướng truyền DMA, từ ngoại vi tới vùng nhớ PeripheralSRC hay từ vùng nhớ tới ngoại vi PeripheralDST.
+	- `DMA_BufferSize`:Kích thước của buffer, số lượng phần tử dữ liệu mà DMA sẽ truyền hoặc nhận. Đây là số lượng đơn vị dữ liệu (không phải số byte mà phụ thuộc vào kích thước data size) mà DMA xử lý trong một lần truyền. Ví dụ: Nếu bạn truyền 100 phần tử mỗi phần tử là 1 byte, DMA_BufferSize là 100.
+	- `DMA_PeripheralInc`: Cấu hình địa chỉ ngoại vi có tăng sau khi truyền DMA hay không. Nếu Enable, địa chỉ ngoại vi sẽ tăng lên theo kích thước data (byte, halfword, word) sau mỗi lần truyền, dùng cho các ngoại vi có vùng địa chỉ liên tục. Nếu Disable, địa chỉ ngoại vi giữ nguyên, thường dùng cho thanh ghi dữ liệu đơn của ngoại vi (ví dụ UART DR).
+	- `DMA Memory Inc`: Cấu hình địa chỉ bộ nhớ có tăng lên sau khi truyền DMA hay không. Enable: địa chỉ bộ nhớ tăng lên theo kích thước data để lưu dữ liệu liên tục trong vùng nhớ. Disable: địa chỉ bộ nhớ giữ nguyên, dùng khi truyền dữ liệu lặp lại đến hoặc từ cùng một vị trí bộ nhớ.
+	- `DMA_PeripheralDataSize`: Cấu hình độ lớn data của ngoại vi. Có thể là 8-bit (byte), 16-bit (halfword) hoặc 32-bit (word) tùy loại ngoại vi và ứng dụng. DMA sẽ đọc/ghi theo kích thước này.
+	- `DMA_MemoryDataSize`: Cấu hình độ lớn data của bộ nhớ, Byte, halfWord hoặc Word
+	- `DMA_Mode`: Cấu hình mode hoạt động là Normal hay Circular
+	- `DMA_Priority`: Cấu hình độ ưu tiên cho kênh DMA.
+	- `DMA_M2M`: Kích hoạt sử dụng truyền từ bộ nhớ đếm bộ nhớ cho kênh DMA Enable hoặc Disable
+
+- Khởi tạo DMA với DMA_Init(): Cấu hình các tham số cho kênh DMA (ở đây là DMA1_Channel2) dựa trên cấu trúc DMA_InitStruct mà bạn đã thiết lập (gồm các tham số như địa chỉ ngoại vi, bộ nhớ, kích thước buffer, hướng truyền, v.v).  Thiết lập xong cấu hình này, DMA đã biết cách hoạt động cho kênh này.
+
+	```c
  
+	DMA_Init(DMA1_Channel2, &DMA_InitStruct);
+ 
+
+-  Kích hoạt kênh DMA với DMA_Cmd():  Bật kênh DMA, cho phép nó bắt đầu hoạt động.
+	```c
+	DMA_Cmd(DMA1_Channel2, ENABLE);
+
+- Kích hoạt DMA cho ngoại vi cụ thể với hàm riêng biệt, ví dụ SPI: Cấu hình cho phép SPI1 sử dụng DMA để nhận dữ liệu (DMA request cho Rx).
+	```c
+	SPI_I2S_DMACmd(SPI1, SPI_I2S_DMAReq_Rx, ENABLE);
+
+- Ý nghĩa: DMA1_Channel2 trong ví dụ này được dùng cho SPI1_RX, tức là kênh 2 của DMA1 kết nối với chức năng nhận dữ liệu của SPI1., ngoại vi SPI sẽ kích hoạt tín hiệu yêu cầu DMA khi có dữ liệu cần truyền hoặc nhận, tạo sự phối hợp giữa DMA và SPI.
+- Sau khi DMA được kích hoạt và ngoại vi yêu cầu DMA, bộ DMA tự động xử lý việc lấy dữ liệu từ SPI và ghi vào bộ nhớ (hoặc ngược lại nếu truyền). Bạn không cần phải can thiệp thêm trong code ngoại trừ xử lý interrupt (nếu có).
+### 4. PWM
+- Tín hiệu PWM dùng để điều khiển động cơ servo gồm hai yếu tố chính:
+	- Tần số: thường là 50 Hz, tức là tín hiệu lặp lại mỗi 20 ms.
+	- Độ rộng xung: là thời gian tín hiệu ở mức cao trong mỗi chu kỳ, thường từ 1 ms đến 2 ms, tương ứng với góc quay của servo từ 0° đến 180°.
+- Chu kỳ nhiệm vụ (duty cycle) là tỉ lệ độ rộng xung trên chu kỳ, dao động khoảng từ 5% đến 10%. Độ rộng xung càng lớn thì servo quay càng xa góc tối đa.
+![image](https://github.com/user-attachments/assets/a06ea4c5-a05e-411c-a0e4-09b780e1958f)
+- Công thức tính toán độ rộng xung cho Servo:
+`pulseWidth = MIN_PULSE_WIDTH + (MAX_PULSE_WIDTH - MIN_PULSE_WIDTH) * angle / 180`
+	 - MIN_PULSE_WIDTH là độ rộng xung cho góc 0 độ (thường là 1000µs).
+	- MAX_PULSE_WIDTH là độ rộng xung cho góc 180 độ (thường là 2000µs).
+	- angle là góc mà servo xoay đến.
+### 4.1. Cấu hình PWM trong STM32
+- Ta phải cấu hình chân chế độ AF_PP để gán chân GPIO với 1 kênh của timer mà ta cấu hình chế độ PWM.
+	```c
+	GPIO_InitTypeDef GPIO_InitStructure;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0; // PA0 là TIM2_CH1
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP; // Chế độ Alternate Function Push-Pull
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+- Cấu hình timer chế độ PWM trong struct TIM_OCInitTypeDef:
+
+	- TIM_OCMode: Chọn chế độ hoạt động cho Output Compare. PWM1 thì kênh timer sẽ ở mức 1 khi nhỏ hơn TIM_Pulse và mức 0 khi lớn hơn. PWM2 ngược lại so với PWM1.
+	- TIM_OutputState: cho phép tín hiệu PWM được xuất ra từ chân tương ứng của MCU.
+	- TIM_Pulse: Đặt giá trị đầu cho độ rộng xung (giá trị timer dùng để so sánh).
+	- TIM_OCPolarity: Đặt cực tính của tín hiệu ngõ ra TIM_OCPolarity_High sẽ làm xung ở mức 1 (HIGH) khi giá trị đếm còn nhỏ hơn TIM_Pulse còn TIM_OCPolarity_Low sẽ làm xung ở mức 0 (LOW) khi giá trị đếm còn hơn hơn TIM_Pulse. Gọi hàm TIM_OCxInit(); để cấu hình cho kênh x tương ứng.
+- Hàm TIM_OCxPreloadConfig(); cấu hình Timer hoạt động với tính năng Preload (TIM_OCPreload_Enable) hay không (TIM_OCPreload_Disable).
+	- Tính năng Preload là tính năng mà hệ thống sẽ chờ cho tới khi timer tạo ra sự kiện Update Event thì mới nạp lại giá trị so sánh mới (TIM_Pulse)
+	- Sự kiện Update Event là sự kiện xảy ra khi timer đã đếm đến giá trị tối đa được cấu hình và sẽ quay lại 0 để bắt đầu chuu kỳ mới. Gọi hàm TIM_Cmd(); để cho phép Timer hoạt động.
+ - 	```c
+	TIM_OC1Init(TIM2, &TIM_OCInitStructure);
+	TIM_OC1PreloadConfig(TIM2, TIM_OCPreload_Enable);
+	TIM_Cmd(TIM2);
+    
+Để thay đổi độ rộng xung xuất ra, sử dụng hàm TIM_SetComparex(TIMx, pulseWidth); với Timer sử dụng là TIMx và độ rộng pulseWidth.
+
